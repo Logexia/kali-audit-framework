@@ -73,6 +73,8 @@ ${BOLD}MODULES DISPONIBLES:${NC}
                     Requiert: GVM installé
     exploitability  Exploitabilité (searchsploit + MSF lookup, indicatif)
     ssl             Audit SSL/TLS (protocoles, certificats, faiblesses)
+    web_owasp       Audit Web OWASP Top 10 (gobuster, sqlmap, wafw00f,
+                    headers, cookies, CMS, WAF)
 
 ${BOLD}EXEMPLES:${NC}
 
@@ -117,7 +119,7 @@ while [[ $# -gt 0 ]]; do
         --skip-openvas)    SKIP_OPENVAS="true";      shift ;;
         --help|-h)         usage ;;
         --list-modules)
-            echo "discovery smb snmp dns email ad wifi cve openvas exploitability ssl"
+            echo "discovery smb snmp dns email ad wifi cve openvas exploitability ssl web_owasp"
             exit 0 ;;
         *) error "Option inconnue: $1"; echo "Utiliser --help"; exit 1 ;;
     esac
@@ -129,7 +131,7 @@ if [[ -z "$OUTPUT_DIR" ]]; then
     SLUG=$(echo "$CLIENT_NAME" | tr ' ' '_' | tr '[:upper:]' '[:lower:]')
     OUTPUT_DIR="/opt/audits/${SLUG}_${TIMESTAMP}"
 fi
-mkdir -p "$OUTPUT_DIR"/{discovery,smb,cve,openvas,exploitability,ssl,wifi,ad,snmp,dns,email_security,report}
+mkdir -p "$OUTPUT_DIR"/{discovery,smb,cve,openvas,exploitability,ssl,wifi,ad,snmp,dns,email_security,web_owasp,report}
 
 export CLIENT_NAME NETWORK DOMAIN_CONTROLLER URLS_FILE WIFI_INTERFACE OUTPUT_DIR SCRIPT_DIR
 export TIMESTAMP SKIP_OPENVAS CLIENT_DOMAIN EXCLUDE_MODULES
@@ -160,7 +162,8 @@ check_deps() {
     for cmd in whatweb nikto enum4linux crackmapexec nxc testssl nbtscan \
                ldapsearch rpcclient snmpwalk snmp-check dnsrecon dnsenum \
                airmon-ng airodump-ng wash onesixtyone impacket-GetNPUsers \
-               impacket-GetUserSPNs impacket-findDelegation gvm-cli searchsploit msfconsole; do
+               impacket-GetUserSPNs impacket-findDelegation gvm-cli searchsploit msfconsole \
+               gobuster feroxbuster wafw00f wpscan sqlmap; do
         command -v "$cmd" &>/dev/null && success "$cmd" || true
     done
 }
@@ -234,6 +237,7 @@ should_run "wifi"           && { run_module "06_wifi"; track wifi; }
 should_run "cve"            && { run_module "07_cve"; track cve; }
 should_run "openvas"        && { run_module "07b_openvas"; track openvas; }
 should_run "exploitability" && { run_module "07c_exploitability"; track exploitability; }
+should_run "web_owasp"      && { run_module "09_web_owasp"; track web_owasp; }
 should_run "ssl"            && { run_module "08_ssl"; track ssl; }
 
 # ── Sauver la liste des modules exécutés ──────────────────────────────────

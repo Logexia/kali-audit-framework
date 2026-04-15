@@ -24,6 +24,7 @@ counts = Counter(i.get('severity','LOW') for i in all_issues)
 network = D.get('network', ''); ts = D.get('timestamp', '')
 ad = D.get('ad', {}); email = D.get('email_security', {})
 openvas = D.get('openvas', {}); exploit_data = D.get('exploitability', {})
+web_owasp = D.get('web_owasp', {})
 scoring = D.get('scoring', {}); trend = D.get('trend')
 history = D.get('history', [])
 modules_ran = set(D.get('modules_ran', []))
@@ -92,6 +93,7 @@ if ran('smb'): toc_items.append(('#smb', f'{sec_n}. Audit SMB')); sec_n += 1
 if ran('snmp'): toc_items.append(('#snmp', f'{sec_n}. Audit SNMP')); sec_n += 1
 if ran('dns'): toc_items.append(('#dns', f'{sec_n}. Audit DNS')); sec_n += 1
 if ran('ssl'): toc_items.append(('#ssl', f'{sec_n}. SSL/TLS')); sec_n += 1
+if ran('web_owasp') and web_owasp.get('mode') == 'executed': toc_items.append(('#web-owasp', f'{sec_n}. Audit Web OWASP')); sec_n += 1
 if ran('cve'): toc_items.append(('#web-tech', f'{sec_n}. Technologies web')); sec_n += 1
 if ran('wifi'): toc_items.append(('#wifi', f'{sec_n}. WiFi')); sec_n += 1
 if history: toc_items.append(('#history', f'{sec_n}. Historique & tendances')); sec_n += 1
@@ -530,6 +532,99 @@ if ran('ssl'):
     else: H += '<p class="ok">✓ OK</p>'
     H += '</div>'
 
+# ══════════════ WEB OWASP ══════════════
+if ran('web_owasp') and web_owasp.get('mode') == 'executed':
+    ow_findings = web_owasp.get('owasp_findings', [])
+    ow_by_cat   = web_owasp.get('by_owasp_category', {})
+    ow_counts   = web_owasp.get('counts', {})
+    ow_waf      = web_owasp.get('waf_detected', {})
+    ow_cms      = web_owasp.get('cms_detected', {})
+    ow_targets  = web_owasp.get('targets_scanned', 0)
+
+    ow_badge_color = '#dc2626' if ow_counts.get('CRITICAL',0)>0 else '#ea580c' if ow_counts.get('HIGH',0)>0 else '#ca8a04' if ow_counts.get('MEDIUM',0)>0 else '#64748b'
+
+    H += f'<div class="card" id="web-owasp"><h2>🌐 Audit Web OWASP Top 10 2021</h2>'
+
+    # Stats overview
+    H += '<div class="grid" style="margin-bottom:12px">'
+    H += f'<div class="stat"><div class="v">{ow_targets}</div><div class="l">Cibles scannées</div></div>'
+    H += f'<div class="stat"><div class="v">{len(ow_findings)}</div><div class="l">Findings OWASP</div></div>'
+    H += f'<div class="stat" style="border:2px solid {"#dc2626" if ow_counts.get("CRITICAL",0)>0 else "#e2e8f0"}"><div class="v" style="color:#dc2626">{ow_counts.get("CRITICAL",0)}</div><div class="l">Critiques</div></div>'
+    H += f'<div class="stat" style="border:2px solid {"#ea580c" if ow_counts.get("HIGH",0)>0 else "#e2e8f0"}"><div class="v" style="color:#ea580c">{ow_counts.get("HIGH",0)}</div><div class="l">Élevés</div></div>'
+    H += f'<div class="stat"><div class="v">{ow_counts.get("MEDIUM",0)}</div><div class="l">Moyens</div></div>'
+    H += '</div>'
+
+    # WAF + CMS quick info
+    if ow_waf or ow_cms:
+        H += '<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px">'
+        for tgt, waf_name in ow_waf.items():
+            if waf_name:
+                H += f'<span style="background:#f0fdf4;border:1px solid #86efac;border-radius:6px;padding:4px 10px;font-size:11px">🛡 WAF: <b>{waf_name}</b> ({tgt})</span>'
+            else:
+                H += f'<span style="background:#fef2f2;border:1px solid #fca5a5;border-radius:6px;padding:4px 10px;font-size:11px">⚠ Pas de WAF ({tgt})</span>'
+        for tgt, cms_info in ow_cms.items():
+            if isinstance(cms_info, dict):
+                H += f'<span style="background:#eff6ff;border:1px solid #93c5fd;border-radius:6px;padding:4px 10px;font-size:11px">📦 CMS: <b>{cms_info.get("cms","")}</b> {cms_info.get("version","")}</span>'
+        H += '</div>'
+
+    # Catégories OWASP
+    owasp_colors = {
+        'A01': '#dc2626', 'A02': '#ea580c', 'A03': '#dc2626',
+        'A05': '#ca8a04', 'A06': '#ea580c', 'A09': '#64748b',
+    }
+    if ow_by_cat:
+        H += '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:8px;margin-bottom:12px">'
+        for oid, cat_info in sorted(ow_by_cat.items()):
+            c = cat_info.get('count', 0)
+            sev = cat_info.get('severities', {})
+            bc = owasp_colors.get(oid, '#64748b')
+            has_crit = sev.get('CRITICAL', 0) > 0 or sev.get('HIGH', 0) > 0
+            bg = '#fef2f2' if has_crit else '#fff7ed' if sev.get('MEDIUM', 0) > 0 else '#f8fafc'
+            H += f'<div style="background:{bg};border:1px solid {bc}33;border-radius:8px;padding:10px;text-align:center">'
+            H += f'<div style="font-size:11px;color:#64748b">{oid}</div>'
+            H += f'<div style="font-size:10px;color:#94a3b8;margin-bottom:4px">{cat_info.get("label","")[:25]}</div>'
+            H += f'<div style="font-size:22px;font-weight:800;color:{bc}">{c}</div>'
+            badges = ""
+            if sev.get('CRITICAL'): badges += f'<span class="badge b-c">{sev["CRITICAL"]}C</span> '
+            if sev.get('HIGH'):     badges += f'<span class="badge b-h">{sev["HIGH"]}H</span> '
+            if sev.get('MEDIUM'):   badges += f'<span class="badge b-m">{sev["MEDIUM"]}M</span> '
+            H += f'<div style="margin-top:4px">{badges}</div></div>'
+        H += '</div>'
+
+    # Findings par catégorie OWASP (tableaux dépliables)
+    owasp_label_full = {
+        'A01': 'A01 — Broken Access Control',
+        'A02': 'A02 — Cryptographic Failures',
+        'A03': 'A03 — Injection',
+        'A05': 'A05 — Security Misconfiguration',
+        'A06': 'A06 — Vulnerable Components',
+        'A09': 'A09 — Security Logging & Monitoring',
+    }
+    from collections import defaultdict as _dd
+    findings_by_cat = _dd(list)
+    for f in ow_findings:
+        findings_by_cat[f.get('owasp_id', 'A?')].append(f)
+
+    for oid in sorted(findings_by_cat.keys()):
+        cat_findings = sorted(findings_by_cat[oid],
+                              key=lambda x: {'CRITICAL':0,'HIGH':1,'MEDIUM':2,'LOW':3,'INFO':4}.get(x.get('severity','LOW'), 9))
+        crit_cnt = sum(1 for f in cat_findings if f.get('severity') in ('CRITICAL','HIGH'))
+        details_open = 'open' if crit_cnt > 0 else ''
+        H += f'<details {details_open}><summary style="cursor:pointer;font-weight:700;margin:8px 0 4px;font-size:13px">'
+        H += f'<span style="color:{owasp_colors.get(oid,"#64748b")}">{owasp_label_full.get(oid,oid)}</span>'
+        H += f' <span style="color:#64748b;font-weight:400">— {len(cat_findings)} finding(s)</span></summary>'
+        H += '<table><tr><th>Cible</th><th>Sév.</th><th>Finding</th><th>Evidence</th><th>Recommandation</th></tr>'
+        for f in cat_findings:
+            bc = badge.get(f.get('severity',''), 'b-l')
+            H += f"<tr><td><b>{f.get('target','')}</b></td>"
+            H += f"<td><span class='badge {bc}'>{f.get('severity','')}</span></td>"
+            H += f"<td>{f.get('finding','')[:100]}</td>"
+            H += f"<td style='font-size:10px;color:#64748b'>{f.get('evidence','')[:80]}</td>"
+            H += f"<td>{f.get('recommendation','')[:100]}</td></tr>"
+        H += '</table></details>'
+
+    H += '</div>'
+
 # ══════════════ WEB TECH ══════════════
 if ran('cve'):
     wt = D.get('cve',{}).get('web_technologies',{})
@@ -618,10 +713,12 @@ if not ran('email'): suggestions.append(('📧', 'Audit Email', 'Ajouter --domai
 if not ran('openvas') or ov_mode == 'degraded':
     suggestions.append(('🔍', 'OpenVAS', 'Installer GVM pour un scan de vulnérabilités complet'))
 if not ran('ad'): suggestions.append(('🏰', 'Active Directory', 'Ajouter --dc IP pour un audit AD approfondi'))
+if not ran('web_owasp'): suggestions.append(('🌐', 'Audit Web OWASP', 'Le module web_owasp n\'a pas tourné — relancer avec des hôtes web actifs'))
 
 # Suggestions d'audit supplémentaires
 suggestions.append(('🔐', 'Politique de mots de passe', 'Tester la robustesse des mots de passe AD avec CrackMapExec + wordlists'))
-suggestions.append(('🌐', 'Test d\'intrusion web', 'Compléter avec un audit OWASP (Burp Suite, ZAP) sur les apps web identifiées'))
+if not ran('web_owasp'):
+    suggestions.append(('🌐', 'Test d\'intrusion web', 'Compléter avec un audit OWASP (Burp Suite, ZAP) sur les apps web identifiées'))
 suggestions.append(('📱', 'Audit physique', 'Vérifier les accès physiques, ports USB exposés, imprimantes réseau'))
 suggestions.append(('🛡️', 'Segmentation réseau', 'Valider l\'isolation des VLANs et les règles de pare-feu inter-segments'))
 suggestions.append(('📋', 'Conformité', 'Évaluer la conformité RGPD, nLPD (Suisse), ISO 27001 selon le contexte client'))

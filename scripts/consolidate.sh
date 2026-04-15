@@ -28,7 +28,7 @@ if os.path.exists(modules_ran_file):
 
 # ── Load summaries ────────────────────────────────────────────────────────
 modules = {}
-for mod in ['discovery','smb','snmp','dns','email_security','ad','wifi','cve','ssl','openvas','exploitability']:
+for mod in ['discovery','smb','snmp','dns','email_security','ad','wifi','cve','ssl','openvas','exploitability','web_owasp']:
     p = f'{out}/{mod}/summary.json'
     if os.path.exists(p):
         try: modules[mod] = json.load(open(p))
@@ -89,7 +89,7 @@ CATEGORIES = {
     'smb':            {'weight': 10, 'modules': ['smb'],       'method': 'issues'},
     'ad':             {'weight': 20, 'modules': ['ad'],        'method': 'module', 'key': ('ad','ad_score')},
     'email':          {'weight': 10, 'modules': ['email_security'], 'method': 'module', 'key': ('email_security','email_score')},
-    'vulns':          {'weight': 20, 'modules': ['cve','openvas','exploitability'], 'method': 'issues_exploit'},
+    'vulns':          {'weight': 20, 'modules': ['cve','openvas','exploitability','web_owasp'], 'method': 'issues_exploit'},
     'ssl':            {'weight': 10, 'modules': ['ssl'],       'method': 'issues'},
     'wifi':           {'weight': 10, 'modules': ['wifi'],      'method': 'issues'},
     'snmp':           {'weight':  5, 'modules': ['snmp'],      'method': 'issues'},
@@ -256,6 +256,7 @@ consolidated = {
         'exploitable_cves': exploit.get('exploitable_cves',[])[:30],
         'legal_warning': "Toute tentative d'exploitation nécessite une autorisation écrite préalable du client.",
     },
+    'web_owasp': {k:v for k,v in modules.get('web_owasp',{}).items() if k != 'issues'},
 
     'history': history,
     'trend': trend,

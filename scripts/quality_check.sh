@@ -116,24 +116,39 @@ elif ov_mode == 'degraded':
 else:
     nr_check(9, 'CVE OpenVAS: export + résumé', True, 'Non exécuté (optionnel)', '')
 
+# 9b. Web OWASP (optionnel)
+web_owasp_p = f'{out}/web_owasp/summary.json'
+if Path(web_owasp_p).exists():
+    wo = json.load(open(web_owasp_p))
+    wo_mode = wo.get('mode', 'unknown')
+    if wo_mode == 'skipped':
+        nr_check(9, 'Web OWASP: module exécuté', True, 'Sauté — aucune cible web (OK)', '')
+    else:
+        wo_ok = wo_mode == 'executed' and 'owasp_findings' in wo
+        wo_cnt = wo.get('counts', {})
+        wo_det = f"Findings: {len(wo.get('owasp_findings',[]))} (C:{wo_cnt.get('CRITICAL',0)} H:{wo_cnt.get('HIGH',0)} M:{wo_cnt.get('MEDIUM',0)})"
+        nr_check(9, 'Web OWASP: module exécuté', wo_ok, wo_det, 'summary.json invalide ou mode incorrect')
+else:
+    nr_check(9, 'Web OWASP: module exécuté', True, 'Non exécuté (optionnel)', '')
+
 # 10. Rapport HTML: toutes sections
 html_ok = False; html_detail = 'Pas vérifié'
 if html_files:
     html = open(f'{rpt}/{html_files[0]}').read()
     required = ['scores','scoring-detail','exec-summary','synthese','inventaire',
                  'ad-audit','email-security','vulns','openvas-vulns','exploitability',
-                 'smb','snmp','dns','ssl','web-tech','wifi','remediation']
+                 'smb','snmp','dns','ssl','web-owasp','web-tech','wifi','remediation']
     found = [s for s in required if f'id="{s}"' in html]
     missing = [s for s in required if f'id="{s}"' not in html]
     has_legal = 'AVERTISSEMENT' in html
-    html_ok = len(missing) <= 3  # tolérance (certaines sections conditionnelles)
+    html_ok = len(missing) <= 4  # tolérance (certaines sections conditionnelles)
     html_detail = f"{len(found)}/{len(required)} sections | Legal:{'✓' if has_legal else '✗'}"
     if missing: html_detail += f" | Absentes: {','.join(missing[:5])}"
 nr_check(10, 'Rapport HTML: sections complètes', html_ok, html_detail, html_detail)
 
 # 11. Modules non modifiés
 intact = True; detail = 'OK'
-for mf in ['01_discovery.sh','02_smb.sh','03_snmp.sh','04_dns.sh','05_ad.sh','06_wifi.sh','08_ssl.sh']:
+for mf in ['01_discovery.sh','02_smb.sh','03_snmp.sh','04_dns.sh','05_ad.sh','06_wifi.sh','08_ssl.sh','09_web_owasp.sh']:
     p = f'{script_dir}/modules/{mf}' if script_dir else ''
     if p and Path(p).exists():
         content = open(p).read()
