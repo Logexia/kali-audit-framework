@@ -249,11 +249,13 @@ phase "PHASE 5 — CONSOLIDATION"
 bash "$SCRIPT_DIR/scripts/consolidate.sh"
 
 # ── Phase 6 ───────────────────────────────────────────────────────────────
-phase "PHASE 6 — RAPPORT HTML"
+phase "PHASE 6 — RAPPORTS"
 bash "$SCRIPT_DIR/scripts/generate_report.sh"
+bash "$SCRIPT_DIR/scripts/generate_report_docx.sh"
 bash "$SCRIPT_DIR/scripts/quality_check.sh"
 
 echo ""
 success "AUDIT TERMINÉ"
-log "Rapport: $OUTPUT_DIR/report/"
-log "Log:     $LOG_FILE"
+log "Rapport HTML:  $OUTPUT_DIR/report/rapport_audit.html"
+log "Rapport DOCX:  $OUTPUT_DIR/report/rapport_audit.docx"
+log "Log:           $LOG_FILE"
