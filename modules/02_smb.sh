@@ -160,22 +160,83 @@ try:
 except Exception:
     pass
 
-# ── Accès anonyme (shares_access.txt) ──────────────────────────────────
+# ── Inventaire shares (CME/NXC + smbclient) ────────────────────────────
+# Construit shares_inventory = {ip: [{name, permissions, comment}]}
+# en parsant les fichiers CME (permissions explicites) puis shares_access.txt
+CME_PAT = re.compile(r'^\s*SMB\s+(\d{1,3}(?:\.\d{1,3}){3})\s+\d+\s+\S+\s+(.*)')
+shares_inventory = {}
+
+def _parse_cme(fpath):
+    if not os.path.exists(fpath): return
+    in_shares = set()
+    for raw in open(fpath, errors='replace'):
+        m = CME_PAT.match(raw)
+        if not m: continue
+        ip, rest = m.group(1), m.group(2).strip()
+        shares_inventory.setdefault(ip, [])
+        if 'Enumerated shares' in rest:
+            in_shares.add(ip); continue
+        if ip not in in_shares: continue
+        if re.search(r'Share\s+Permission', rest) or re.match(r'^-{3}', rest) or not rest:
+            continue
+        parts = [p for p in re.split(r'\s{2,}', rest) if p.strip()]
+        if not parts: continue
+        sname = parts[0].strip()
+        if not re.match(r'^[A-Za-z0-9_$@!#.\-]+$', sname): continue
+        perms   = parts[1].strip() if len(parts) > 1 else ''
+        comment = parts[2].strip() if len(parts) > 2 else ''
+        # Si le 2e champ n'est pas READ/WRITE, c'est le commentaire
+        if not re.match(r'^(READ|WRITE|NO ACCESS|,|\s)*$', perms, re.I):
+            comment = (perms + ' ' + comment).strip(); perms = ''
+        perms = perms.upper()
+        existing = next((s for s in shares_inventory[ip]
+                         if s['name'].upper() == sname.upper()), None)
+        if existing:
+            if perms and not existing['permissions']: existing['permissions'] = perms
+        else:
+            shares_inventory[ip].append({'name': sname, 'permissions': perms, 'comment': comment})
+
+_parse_cme(f'{out}/shares_null.txt')
+_parse_cme(f'{out}/shares_guest.txt')
+
+# Enrichir / compléter avec les résultats smbclient (shares_access.txt)
 try:
-    for line in open(f'{out}/shares_access.txt'):
-        line = line.strip()
-        if 'ECRITURE' in line:
-            share_id = line.split('→')[0].strip()
-            add_issue(share_id, 'HIGH',
-                      f'Share accessible en écriture anonyme: {share_id}',
-                      'Supprimer les droits d\'accès anonyme en écriture')
-        elif 'LECTURE' in line and 'PAS D' not in line:
-            share_id = line.split('→')[0].strip()
-            add_issue(share_id, 'MEDIUM',
-                      f'Share accessible en lecture anonyme: {share_id}',
-                      'Restreindre l\'accès anonyme (GPO: RestrictNullSessAccess=1)')
+    cur_ip = ''
+    for raw in open(f'{out}/shares_access.txt'):
+        line = raw.strip()
+        if '═══' in line:
+            m = re.search(r'(\d{1,3}(?:\.\d{1,3}){3})', line)
+            cur_ip = m.group(1) if m else ''; continue
+        if '→' not in line or not cur_ip: continue
+        left, right = line.split('→', 1)
+        m = re.search(r'\\\\(?:[\d.]+)\\(\S+)', left)
+        sname = m.group(1) if m else ''
+        if not sname: continue
+        access = right.strip()
+        perms = 'READ,WRITE' if 'ECRITURE' in access else ('READ' if 'LECTURE' in access else '')
+        shares_inventory.setdefault(cur_ip, [])
+        existing = next((s for s in shares_inventory[cur_ip]
+                         if s['name'].upper() == sname.upper()), None)
+        if existing:
+            if perms and not existing['permissions']: existing['permissions'] = perms
+        else:
+            shares_inventory[cur_ip].append({'name': sname, 'permissions': perms, 'comment': ''})
 except Exception:
     pass
+
+# Générer issues à partir de l'inventaire
+for ip, sh_list in shares_inventory.items():
+    for sh in sh_list:
+        p = sh.get('permissions', '').upper()
+        n = sh.get('name', '')
+        if 'WRITE' in p:
+            add_issue(ip, 'HIGH',
+                      f'Share {n} accessible en écriture anonyme sur {ip}',
+                      "Supprimer les droits d'accès anonyme en écriture")
+        elif 'READ' in p and n.upper() not in ('IPC$',):
+            add_issue(ip, 'MEDIUM',
+                      f'Share {n} accessible en lecture anonyme sur {ip}',
+                      "Restreindre l'accès anonyme (GPO: RestrictNullSessAccess=1)")
 
 # ── Null session (nxc/cme) ─────────────────────────────────────────────
 try:
@@ -250,6 +311,7 @@ except Exception:
 counts = Counter(i['severity'] for i in issues)
 json.dump({
     'total': total,
+    'shares_inventory': shares_inventory,
     'issues': issues,
     'counts': {
         'CRITICAL': counts.get('CRITICAL', 0),

@@ -203,8 +203,8 @@ if ran('discovery') and hosts:
     H += '<div class="card" id="inventaire"><h2>Inventaire Réseau</h2><table>'
     H += '<tr><th>IP</th><th>Hostname</th><th>MAC</th><th>OS</th><th>TCP</th><th>UDP</th></tr>'
     for h in hosts:
-        tcp = ', '.join(str(p) for p in h.get('tcp_ports',[])) or '-'
-        udp = ', '.join(str(p) for p in h.get('udp_ports',[])) or '-'
+        tcp = ', '.join(str(p['port']) if isinstance(p, dict) else str(p) for p in h.get('tcp_ports',[])) or '-'
+        udp = ', '.join(str(p['port']) if isinstance(p, dict) else str(p) for p in h.get('udp_ports',[])) or '-'
         H += f"<tr><td><b>{h.get('ip','')}</b></td><td>{h.get('hostname','')}</td><td>{h.get('mac','')}</td><td class='truncate'>{h.get('os','')}</td><td>{tcp}</td><td>{udp}</td></tr>"
     H += '</table></div>'
 
@@ -216,7 +216,7 @@ if ran('ad') and ad.get('dc_ip'):
     if ad_findings:
         H += '<table><tr><th>Catégorie</th><th>Sév.</th><th>Finding</th><th>Détail</th></tr>'
         for f in sorted(ad_findings, key=lambda x: {'CRITICAL':0,'HIGH':1,'MEDIUM':2,'LOW':3}.get(x.get('severity','LOW'),9)):
-            H += f"<tr><td>{f.get('category','')}</td><td><span class='badge {badge.get(f.get('severity',''),'b-l')}'>{f.get('severity','')}</span></td><td><b>{f.get('title','')}</b></td><td>{f.get('detail','')[:100]}</td></tr>"
+            H += f"<tr><td>{f.get('category','')}</td><td><span class='badge {badge.get(f.get('severity',''),'b-l')}'>{f.get('severity','')}</span></td><td><b>{f.get('title','')}</b></td><td>{f.get('details','')[:100]}</td></tr>"
         H += '</table>'
     pwd = ad.get('password_policy', {})
     if pwd:
@@ -420,13 +420,37 @@ if ran('exploitability') and exploit_data.get('total_exploitable', 0) > 0:
 
 # ══════════════ SMB ══════════════
 if ran('smb'):
-    smb_issues = [i for i in all_issues if i.get('module')=='smb']
+    smb_data   = D.get('smb', {})
+    smb_issues = [i for i in all_issues if i.get('module') == 'smb']
+    shares_inv = smb_data.get('shares_inventory', {})
+    total_shares = sum(len(v) for v in shares_inv.values())
+    accessible   = sum(1 for lst in shares_inv.values()
+                       for s in lst if s.get('permissions',''))
     H += f'<div class="card" id="smb"><h2>📁 Audit SMB</h2>'
-    if smb_issues:
-        H += '<table><tr><th>Cible</th><th>Sév.</th><th>Problème</th></tr>'
-        for i in smb_issues: H += f"<tr><td><b>{i.get('target','')}</b></td><td><span class='badge {badge.get(i['severity'],'b-l')}'>{i['severity']}</span></td><td>{i['issue']}</td></tr>"
+    H += f'<div class="grid" style="margin-bottom:10px">'
+    H += f'<div class="stat"><div class="v">{smb_data.get("total",len(shares_inv))}</div><div class="l">Hôtes SMB</div></div>'
+    H += f'<div class="stat"><div class="v">{total_shares}</div><div class="l">Shares listés</div></div>'
+    H += f'<div class="stat" style="border:2px solid {"#dc2626" if accessible else "#e2e8f0"}"><div class="v" style="color:{"#dc2626" if accessible else "#1e293b"}">{accessible}</div><div class="l">Accessibles (anon)</div></div>'
+    H += f'<div class="stat" style="border:2px solid {"#dc2626" if smb_data.get("counts",{}).get("CRITICAL",0) else "#e2e8f0"}"><div class="v">{len(smb_issues)}</div><div class="l">Issues</div></div>'
+    H += '</div>'
+    if shares_inv:
+        H += '<h3 style="margin:8px 0 4px">Inventaire des shares</h3>'
+        H += '<table><tr><th>IP</th><th>Share</th><th>Accès anonyme</th><th>Commentaire</th></tr>'
+        for ip, sh_list in sorted(shares_inv.items()):
+            for sh in sh_list:
+                p = sh.get('permissions','') or '—'
+                color = '#dc2626' if 'WRITE' in p else ('#f59e0b' if 'READ' in p else '#64748b')
+                p_html = f'<b style="color:{color}">{p}</b>'
+                H += f"<tr><td><b>{ip}</b></td><td>{sh.get('name','')}</td><td>{p_html}</td><td style='font-size:11px;color:#64748b'>{sh.get('comment','')}</td></tr>"
         H += '</table>'
-    else: H += '<p class="ok">✓ OK</p>'
+    if smb_issues:
+        H += '<h3 style="margin:8px 0 4px">Issues détectées</h3>'
+        H += '<table><tr><th>Cible</th><th>Sév.</th><th>Problème</th></tr>'
+        for i in smb_issues:
+            H += f"<tr><td><b>{i.get('target','')}</b></td><td><span class='badge {badge.get(i.get(\"severity\",'LOW'),'b-l')}'>{i.get('severity','')}</span></td><td>{i.get('issue','')}</td></tr>"
+        H += '</table>'
+    if not shares_inv and not smb_issues:
+        H += '<p class="ok">✓ Aucun share accessible anonymement détecté</p>'
     H += '</div>'
 
 # ══════════════ SNMP ══════════════
