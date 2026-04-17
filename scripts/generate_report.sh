@@ -547,13 +547,53 @@ if ran('dns'):
 
 # ══════════════ SSL ══════════════
 if ran('ssl'):
-    ssl_issues = [i for i in all_issues if i.get('module')=='ssl']
+    ssl_data    = D.get('ssl', {})
+    ssl_targets = ssl_data.get('targets_detail', {})
+    ssl_issues  = [i for i in all_issues if i.get('module')=='ssl']
     H += '<div class="card" id="ssl"><h2>🔐 SSL/TLS</h2>'
+
+    # Stats
+    exp_soon = sum(1 for d in ssl_targets.values() if isinstance(d.get('cert_days_remaining'), int) and d['cert_days_remaining'] < 90)
+    exp_red  = sum(1 for d in ssl_targets.values() if isinstance(d.get('cert_days_remaining'), int) and d['cert_days_remaining'] < 0)
+    H += '<div class="grid" style="margin-bottom:10px">'
+    H += f'<div class="stat"><div class="v">{ssl_data.get("targets",0)}</div><div class="l">Cibles testées</div></div>'
+    H += f'<div class="stat"><div class="v">{len(ssl_issues)}</div><div class="l">Issues SSL/TLS</div></div>'
+    H += f'<div class="stat" style="border:2px solid {"#dc2626" if exp_red else "#e2e8f0"}"><div class="v" style="color:{"#dc2626" if exp_red else "#ca8a04" if exp_soon else "#1e293b"}">{exp_soon}</div><div class="l">Certs &lt; 90 j</div></div>'
+    H += '</div>'
+
+    # Tableau certificats
+    if ssl_targets:
+        H += '<details open><summary style="cursor:pointer;font-weight:700;margin:6px 0 4px">🔏 Certificats actifs</summary>'
+        H += '<table><tr><th>Hôte:Port</th><th>Sujet (CN)</th><th>Émetteur</th><th>Expiration</th><th>Jours restants</th><th>Protocoles</th></tr>'
+        for tgt, det in sorted(ssl_targets.items()):
+            days = det.get('cert_days_remaining', '')
+            protos = ', '.join(det.get('protocols', []))
+            if isinstance(days, int):
+                ds = 'color:#dc2626;font-weight:700' if days < 0 else 'color:#ea580c;font-weight:700' if days < 30 else 'color:#ca8a04' if days < 90 else ''
+                dv = str(days)
+            else:
+                ds = ''; dv = '—'
+            ps = 'color:#dc2626;font-weight:700' if any(p in protos for p in ('SSLv2','SSLv3','TLSv1.0','TLSv1.1')) else 'color:#16a34a'
+            ss = '<span class="badge b-m">auto-signé</span> ' if det.get('cert_selfsigned') else ''
+            H += f"<tr><td><b>{tgt}</b></td>"
+            H += f"<td>{ss}{det.get('cert_cn','') or '—'}</td>"
+            H += f"<td style='font-size:11px;color:#64748b'>{det.get('cert_issuer','') or '—'}</td>"
+            H += f"<td>{det.get('cert_expiry','') or '—'}</td>"
+            H += f"<td style='{ds}'>{dv}</td>"
+            H += f"<td style='{ps};font-size:11px'>{protos or '—'}</td></tr>"
+        H += '</table></details>'
+
+    # Issues SSL
     if ssl_issues:
-        H += '<table><tr><th>Cible</th><th>Sév.</th><th>Problème</th></tr>'
-        for i in ssl_issues: H += f"<tr><td><b>{i.get('target','')}</b></td><td><span class='badge {badge.get(i['severity'],'b-l')}'>{i['severity']}</span></td><td>{i['issue']}</td></tr>"
-        H += '</table>'
-    else: H += '<p class="ok">✓ OK</p>'
+        H += '<details open><summary style="cursor:pointer;font-weight:700;margin:10px 0 4px">⚠ Vulnérabilités SSL/TLS</summary>'
+        H += '<table><tr><th>Cible</th><th>Sév.</th><th>Problème</th><th>Recommandation</th></tr>'
+        for i in sorted(ssl_issues, key=lambda x: {'CRITICAL':0,'HIGH':1,'MEDIUM':2,'LOW':3}.get(x.get('severity','LOW'),9)):
+            bc = badge.get(i.get('severity','LOW'),'b-l')
+            H += f"<tr><td><b>{i.get('target','')}</b></td><td><span class='badge {bc}'>{i.get('severity','')}</span></td>"
+            H += f"<td>{i.get('issue','')}</td><td style='font-size:11px;color:#64748b'>{i.get('recommendation','')}</td></tr>"
+        H += '</table></details>'
+    elif not ssl_targets:
+        H += '<p class="ok">✓ OK</p>'
     H += '</div>'
 
 # ══════════════ WEB OWASP ══════════════

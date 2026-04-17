@@ -691,19 +691,25 @@ if ran('ssl'):
     if targets_detail:
         doc.add_paragraph()
         h(doc, 'Certificats', 2)
-        t_cert = new_table(doc, ['Hôte:Port', 'Sujet', 'Expiration', 'Jours restants'])
+        t_cert = new_table(doc, ['Hôte:Port', 'Sujet (CN)', 'Émetteur', 'Expiration', 'Jours restants', 'Protocoles'])
         for host_port, det in list(targets_detail.items())[:20]:
             days = det.get('cert_days_remaining', '')
+            protos = ', '.join(det.get('protocols', []))
             row = t_cert.add_row()
             cell_text(row.cells[0], host_port[:35], bold=True)
-            cell_text(row.cells[1], det.get('cert_subject','')[:45], size=8)
-            cell_text(row.cells[2], det.get('validity','')[:20], size=8)
-            cell_text(row.cells[3], str(days) if days != '' else '—',
+            cell_text(row.cells[1], det.get('cert_cn','')[:45], size=8)
+            cell_text(row.cells[2], det.get('cert_issuer','')[:35], size=8)
+            cell_text(row.cells[3], det.get('cert_expiry','')[:20], size=8)
+            cell_text(row.cells[4], str(days) if days != '' else '—',
                       align=WD_ALIGN_PARAGRAPH.CENTER)
+            cell_text(row.cells[5], protos[:30], size=8)
+            days_col = 4
             if isinstance(days, int):
-                if days < 0:    set_cell_bg(row.cells[3], SEV_BG['CRITICAL'])
-                elif days < 30: set_cell_bg(row.cells[3], SEV_BG['HIGH'])
-                elif days < 90: set_cell_bg(row.cells[3], SEV_BG['MEDIUM'])
+                if days < 0:    set_cell_bg(row.cells[days_col], SEV_BG['CRITICAL'])
+                elif days < 30: set_cell_bg(row.cells[days_col], SEV_BG['HIGH'])
+                elif days < 90: set_cell_bg(row.cells[days_col], SEV_BG['MEDIUM'])
+            if any(p in protos for p in ('SSLv2','SSLv3','TLSv1.0','TLSv1.1')):
+                set_cell_bg(row.cells[5], SEV_BG['HIGH'])
 
     # Issues SSL
     if ssl_issues:

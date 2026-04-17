@@ -30,7 +30,7 @@ log "Génération inventaire"
 
 python3 << 'PYINV'
 import xml.etree.ElementTree as ET
-import json, csv, os, sys
+import json, csv, os, sys, socket
 from collections import Counter
 
 out = os.environ['OUTPUT_DIR'] + '/discovery'
@@ -83,6 +83,14 @@ def parse_nmap_xml(xml_path, existing_hosts=None):
 hosts = parse_nmap_xml(f'{out}/full_scan.xml')
 hosts = parse_nmap_xml(f'{out}/udp_scan.xml', hosts)
 hosts.sort(key=lambda x: [int(p) for p in x['ip'].split('.') if p.isdigit()])
+
+# Résolution DNS inverse pour les hôtes sans hostname (PTR records)
+for h in hosts:
+    if not h.get('hostname'):
+        try:
+            h['hostname'] = socket.gethostbyaddr(h['ip'])[0]
+        except Exception:
+            pass
 
 def ips_with_port(port, proto='tcp'):
     key = 'tcp_ports' if proto == 'tcp' else 'udp_ports'
